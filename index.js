@@ -2,8 +2,10 @@ const express = require('express');
 const cors = require('cors');
 const app = express();
 const port = 3000;
-const { MongoClient } = require('mongodb');
+const { MongoClient, ObjectId } = require('mongodb');
 const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+
 
 const corsOptions = {
     origin: '*',
@@ -31,7 +33,6 @@ main();
 app.get("/", (req, res) => {
   res.send("Arranca la app en node");
 });
-
 
 app.post('/register', async (req, res) =>{
     
@@ -69,12 +70,17 @@ app.post('/login', async (req, res) => {
             try{
                 const okPass = await compare(password, user.password);
                 if(okPass){
-                    res.status(200).send({message: 'Login exitoso'});
+                    const token = jwt.sign({
+                        email
+                      }, 'secret', { expiresIn: '1h' });
+                    res.status(200).send({message: 'Login exitoso', token: token});
+                    
+                    
                 }else{
                     res.status(401).send({message: 'Contraseña incorrecta'});
                 }
             }catch(err){
-                res.status(500).send({message: 'No esta bien la contraseña'});
+                res.status(500).send({message: 'Error al loguearse'});
             }  
         }else{
             res.status(404).send({message: 'Usuario no encontrado'});
@@ -84,6 +90,74 @@ app.post('/login', async (req, res) => {
         res.status(500).send({message: 'Error de login'});
     }
 });
+
+app.post('/profile', async (req, res)=>{
+    const { email, token } = req.body;
+    console.log(email);
+    console.log(token);
+    try {
+        const decoded = jwt.verify(token, 'secret');
+        console.log(decoded);
+        try{
+            const db = client.db("toptenisquedadas");
+            const col = db.collection("listusers");
+            
+            const filter = { "email": email };
+            const user = await col.findOne(filter);
+            if(user){
+                return res.status(200).send({message: "Perfil de usuario recibido", user: user});
+            }else{
+                return res.status(404).send({message: 'Usuario no encontrado'});
+            }
+        }catch(e){
+            return res.status(500).send({message: 'Error al obtener perfil'});
+        }
+    } catch(err) {
+        console.log("errrorrrrr de verificacion de token");
+        return res.status(402).send({message: "Error al verificar el token"});
+    }
+    return res.status(200).send({message: "Ok profile"});
+});
+
+
+
+app.put('/update-profile', async (req ,res) => {
+    const { token, email, name, lastname, preference, level, matchesPlayed, matchesWon, 
+        about, availability, sex, birthday, password, _id } = req.body;
+    console.log(_id);
+
+    // Crea un objeto para actualizar
+    const updateUser = { email, name, lastname, preference, level, matchesPlayed, 
+        matchesWon, about, availability, sex, birthday, password }; 
+
+    try {
+        const decoded = jwt.verify(token, 'secret');
+        console.log(decoded);
+
+        try{
+            const result = await client.db("toptenisquedadas").collection("listusers").updateOne(
+                { _id: new ObjectId(_id) }, // Filtro: busca el documento por _id
+                { $set: updateUser } // Actualiza el documento con los datos de updateUser
+            );
+    
+            if (result.matchedCount === 0) {
+                console.log(`No se encontró ningún documento con el ID`);
+                return req.status(402).send({message: "No se encontro el documento"}); // No se encontró el documento
+            }
+            console.log(`Documento actualizado con el ID:`);
+            return res.status(200).send({message: "Profile actualizado", user: updateUser});
+        }catch(error){
+            console.error("Error al actualizar el perfil:", error);
+            return res.status(500).send({message: 'Error al actualizar el perfil'});
+        }
+        
+
+        return res.status(200).send({message: "Ok update"});
+    }catch(err){
+        return res.status(402).send({message: "Error al verificar el token"});
+    }
+})
+
 
 
 // Crear una nueva lista
