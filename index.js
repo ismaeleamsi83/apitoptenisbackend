@@ -1,4 +1,5 @@
 const express = require('express');
+const multer = require('multer');
 const cors = require('cors');
 const app = express();
 const port = 3000;
@@ -6,6 +7,9 @@ const { MongoClient, ObjectId } = require('mongodb');
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 
+// Configuración de multer (almacenamiento en memoria o en disco)
+// const storage = multer.memoryStorage(); // Almacenar el archivo en memoria
+// const upload = multer({ storage: storage });
 
 const corsOptions = {
     origin: '*',
@@ -13,7 +17,7 @@ const corsOptions = {
     allowedHeaders: ['Content-Type'], 
 }
 app.use(cors(corsOptions));
-app.use(express.json());
+app.use(express.json({ limit: '5mb' }));
 
 const uri = "mongodb+srv://ismaelreyplata:69n6IoJDgadmygpW@cluster0.h3jua.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0";
 const client = new MongoClient(uri);
@@ -32,6 +36,18 @@ main();
 
 app.get("/", (req, res) => {
   res.send("Arranca la app en node");
+});
+
+app.get("/players", async (req, res) => {
+    try{
+        const db = client.db("toptenisquedadas");
+        const col = db.collection("listusers");
+        const players = await col.find().toArray();
+        res.status(200).send({message: "players recibidos", players: players});
+    }catch(err){
+        console.log(err);
+    }
+    
 });
 
 app.post('/register', async (req, res) =>{
@@ -65,11 +81,13 @@ app.post('/login', async (req, res) => {
         
         const filter = { "email": email };
         const user = await col.findOne(filter);
-
+        console.log("encuentra el usuario");
         if(user){
             try{
+                console.log("antes de mirar el password");
                 const okPass = await compare(password, user.password);
                 if(okPass){
+                    console.log("password correcto");
                     const token = jwt.sign({
                         email
                       }, 'secret', { expiresIn: '1h' });
@@ -105,6 +123,15 @@ app.post('/profile', async (req, res)=>{
             const filter = { "email": email };
             const user = await col.findOne(filter);
             if(user){
+                if (user.imageUrl && user.imageUrl._bsontype === 'Binary') {
+                    user.imageUrl = user.imageUrl.toString('base64'); // Convertir a Base64
+                } else {
+                    user.imageUrl = null; // Si no tiene imagen, devuelve null o un valor predeterminado
+                }
+        
+                // Eliminar campos sensibles antes de enviar al frontend (si es necesario)
+                
+                // console.log(user);
                 return res.status(200).send({message: "Perfil de usuario recibido", user: user});
             }else{
                 return res.status(404).send({message: 'Usuario no encontrado'});
@@ -123,12 +150,30 @@ app.post('/profile', async (req, res)=>{
 
 app.put('/update-profile', async (req ,res) => {
     const { token, email, name, lastname, preference, level, matchesPlayed, matchesWon, 
-        about, availability, sex, birthday, password, _id } = req.body;
+        about, availability, sex, birthday, population, password, _id } = req.body;
     console.log(_id);
 
     // Crea un objeto para actualizar
     const updateUser = { email, name, lastname, preference, level, matchesPlayed, 
-        matchesWon, about, availability, sex, birthday, password }; 
+        matchesWon, about, availability, sex, birthday, population, password }; 
+
+    const user = req.body;
+    if (user.imageUrl) {
+        // El archivo está en base64, lo convertimos a Buffer
+        const buffer = Buffer.from(user.imageUrl, 'base64');
+        
+        // Aquí podrías guardar el buffer en la base de datos, por ejemplo, en GridFS o MongoDB
+        console.log('Archivo recibido como buffer:', buffer);
+
+        updateUser.imageUrl = buffer;
+    }
+
+    
+
+    
+    
+    
+    
 
     try {
         const decoded = jwt.verify(token, 'secret');
@@ -157,6 +202,8 @@ app.put('/update-profile', async (req ,res) => {
         return res.status(402).send({message: "Error al verificar el token"});
     }
 })
+
+
 
 
 
