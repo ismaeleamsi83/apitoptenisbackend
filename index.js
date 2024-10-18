@@ -203,6 +203,73 @@ app.put('/update-profile', async (req ,res) => {
     }
 })
 
+app.put('/update-notes', async (req, res) => {
+    const { _id, newNote } = req.body;  // _id del usuario y la nueva nota que se pasa en el body
+
+    if (!newNote || !newNote._id) {
+        return res.status(400).send({ message: "La nota debe tener un _id para actualizar o crear." });
+    }
+
+    try {
+        const userId = new ObjectId(_id);
+        const noteId = new ObjectId(newNote._id);
+
+        const db = client.db("toptenisquedadas");
+        const col = db.collection("listusers");
+
+        // Verificamos si el usuario existe
+        const user = await col.findOne({ _id: userId });
+
+        if (!user) {
+            return res.status(404).send({ message: "Usuario no encontrado" });
+        }
+
+        // Si 'notes' no existe o no es un array, lo inicializamos como un array vacío
+        if (!Array.isArray(user.notes)) {
+            await col.updateOne(
+                { _id: userId },
+                { $set: { notes: [] } }
+            );
+            user.notes = [];  // Actualizamos localmente el valor de 'user.notes'
+        }
+
+        // Verificamos si la nota ya existe dentro del array `notes` del usuario
+        const existingNoteIndex = user.notes.findIndex(note => note._id.toString() === noteId.toString());
+
+        if (existingNoteIndex !== -1) {
+            // Si la nota ya existe, la actualizamos en el array
+            user.notes[existingNoteIndex] = newNote;
+
+            const updateResult = await col.updateOne(
+                { _id: userId },
+                { $set: { notes: user.notes } }  // Sobrescribimos el array completo
+            );
+
+            if (updateResult.modifiedCount === 1) {
+                return res.status(200).send({ message: "Nota actualizada exitosamente" });
+            } else {
+                return res.status(500).send({ message: "Error al actualizar la nota" });
+            }
+        } else {
+            // Si la nota no existe, la agregamos al array
+            const addNoteResult = await col.updateOne(
+                { _id: userId },  // Buscamos al usuario por su _id
+                { $push: { notes: newNote } }  // Agregamos la nueva nota si no existe
+            );
+
+            if (addNoteResult.modifiedCount === 1) {
+                return res.status(200).send({ message: "Nota agregada exitosamente" });
+            } else {
+                return res.status(500).send({ message: "Error al agregar la nota" });
+            }
+        }
+    } catch (err) {
+        console.error("Error al actualizar/agregar nota:", err);
+        return res.status(500).send({ message: 'Error interno del servidor' });
+    }
+});
+
+
 
 
 
